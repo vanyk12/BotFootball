@@ -1,0 +1,487 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Football Match Organizer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { background: var(--tg-theme-bg-color, #0f172a); color: var(--tg-theme-text-color, #e2e8f0); }
+  .tab-active { background: #22c55e; color: #fff; }
+  .tab-inactive { background: #1e293b; color: #94a3b8; }
+  input[type="range"] { -webkit-appearance: none; height: 8px; border-radius: 4px; background: #334155; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #22c55e; cursor: pointer; }
+  .card { background: rgba(30,41,59,0.8); border: 1px solid rgba(71,85,105,0.5); }
+  ::-webkit-scrollbar { width: 0; }
+</style>
+</head>
+<body class="min-h-screen pb-24">
+
+<div id="app" class="max-w-md mx-auto p-4">
+
+  <!-- Header -->
+  <div class="text-center mb-4 pt-2">
+    <h1 class="text-2xl font-bold text-green-400">⚽ Football Organizer</h1>
+    <p id="headerSubtitle" class="text-sm text-slate-400 mt-1">Загрузка...</p>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="flex gap-2 mb-4 sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md py-2 -mx-4 px-4">
+    <button id="tabProfile" onclick="switchTab('profile')" class="flex-1 py-2 rounded-lg font-semibold text-sm transition-all tab-active">Профиль</button>
+    <button id="tabMatch" onclick="switchTab('match')" class="flex-1 py-2 rounded-lg font-semibold text-sm transition-all tab-inactive">Матч</button>
+    <button id="tabActive" onclick="switchTab('active')" class="flex-1 py-2 rounded-lg font-semibold text-sm transition-all tab-inactive">Игра</button>
+  </div>
+
+  <!-- ============ PROFILE SCREEN ============ -->
+  <div id="screenProfile" class="space-y-4">
+    <!-- Not registered form -->
+    <div id="registerForm" class="hidden card rounded-2xl p-5 space-y-4">
+      <h2 class="text-lg font-bold text-center text-white">Регистрация игрока</h2>
+
+      <div class="flex items-center gap-3 bg-slate-800/60 rounded-xl p-3">
+        <img id="regAvatar" src="" class="w-12 h-12 rounded-full object-cover hidden" />
+        <div class="flex-1">
+          <input type="text" id="regUsername" placeholder="@username" disabled
+            class="w-full bg-transparent text-white font-semibold outline-none" />
+          <input type="text" id="regName" placeholder="Имя" disabled
+            class="w-full bg-transparent text-slate-400 text-sm outline-none mt-1" />
+        </div>
+      </div>
+
+      <div>
+        <div class="flex justify-between text-sm mb-2">
+          <span class="text-slate-300">Уровень игры</span>
+          <span id="skillValue" class="font-bold text-green-400">50%</span>
+        </div>
+        <input type="range" id="skillSlider" min="0" max="100" value="50" step="1" class="w-full" />
+        <div class="flex justify-between text-xs text-slate-500 mt-1">
+          <span>Новичок</span><span>Профи</span>
+        </div>
+      </div>
+
+      <button onclick="registerUser()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition">
+        💾 Сохранить профиль
+      </button>
+    </div>
+
+    <!-- Profile stats -->
+    <div id="profileStats" class="hidden space-y-4">
+      <div class="card rounded-2xl p-5 text-center">
+        <img id="profileAvatar" src="" class="w-20 h-20 rounded-full mx-auto object-cover mb-3" />
+        <h2 id="profileName" class="text-xl font-bold text-white"></h2>
+        <p id="profileUsername" class="text-slate-400 text-sm"></p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="card rounded-xl p-4 text-center">
+          <div id="statSkill" class="text-2xl font-bold text-green-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Скилл</div>
+        </div>
+        <div class="card rounded-xl p-4 text-center">
+          <div id="statMatches" class="text-2xl font-bold text-blue-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Матчи</div>
+        </div>
+        <div class="card rounded-xl p-4 text-center">
+          <div id="statGoals" class="text-2xl font-bold text-orange-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Голы</div>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-4">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="text-slate-300">Прогресс уровня</span>
+          <span id="skillBarValue" class="text-green-400 font-bold">—</span>
+        </div>
+        <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+          <div id="skillBar" class="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full transition-all" style="width:0%"></div>
+        </div>
+      </div>
+
+      <button onclick="loadMe()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-xl text-sm transition">
+        🔄 Обновить
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ MATCH CREATION SCREEN ============ -->
+  <div id="screenMatch" class="hidden space-y-4">
+    <div class="card rounded-2xl p-4">
+      <h2 class="text-lg font-bold text-white mb-1">Создание матча</h2>
+      <p class="text-sm text-slate-400 mb-3">Отметьте игроков, пришедших на игру</p>
+
+      <div id="playerList" class="space-y-2 max-h-96 overflow-y-auto"></div>
+
+      <div class="mt-4 flex gap-2">
+        <button onclick="selectAll()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold py-2 rounded-lg">✅ Все</button>
+        <button onclick="deselectAll()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold py-2 rounded-lg">❌ Сброс</button>
+      </div>
+
+      <button onclick="createMatch()" id="btnCreateMatch"
+        class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl mt-3 transition">
+        ⚽ Сформировать команды
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ ACTIVE MATCH SCREEN ============ -->
+  <div id="screenActive" class="hidden space-y-4">
+    <div id="activeMatchContainer" class="space-y-4"></div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// Telegram WebApp init
+// ============================================================
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.expand();
+  tg.ready();
+  tg.setHeaderColor('#0f172a');
+  tg.setBackgroundColor('#0f172a');
+}
+
+const API = window.location.origin.replace(/\/$/, '') + '/api';
+let initData = '';
+let currentUser = null;
+let allUsers = [];
+let activeMatch = null;
+let selectedPlayers = new Set();
+let goalsInput = {}; // {userId: goals}
+
+function getInitData() {
+  if (tg && tg.initData && tg.initData.length > 0) {
+    return tg.initData;
+  }
+  // Fallback for testing
+  const params = new URLSearchParams(window.location.search);
+  return params.get('initData') || '';
+}
+
+async function apiCall(path, method = 'GET', body = null) {
+  const headers = {
+    'Authorization': 'Bearer ' + initData,
+    'Content-Type': 'application/json',
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({detail: 'Request failed'}));
+    throw new Error(err.detail || 'Request failed');
+  }
+  return res.json();
+}
+
+// ============================================================
+// Tab switching
+// ============================================================
+function switchTab(tab) {
+  const tabs = ['profile', 'match', 'active'];
+  tabs.forEach(t => {
+    const tabEl = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    const screenEl = document.getElementById('screen' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (t === tab) {
+      tabEl.classList.add('tab-active');
+      tabEl.classList.remove('tab-inactive');
+      screenEl.classList.remove('hidden');
+    } else {
+      tabEl.classList.add('tab-inactive');
+      tabEl.classList.remove('tab-active');
+      screenEl.classList.add('hidden');
+    }
+  });
+  if (tab === 'match') loadUsers();
+  if (tab === 'active') loadActiveMatch();
+}
+
+// ============================================================
+// Profile logic
+// ============================================================
+async function loadMe() {
+  try {
+    const data = await apiCall('/me');
+    currentUser = data.user;
+    if (data.registered) {
+      showProfile(data.user);
+    } else {
+      showRegisterForm(data.user);
+    }
+  } catch (e) {
+    document.getElementById('headerSubtitle').textContent = 'Ошибка: ' + e.message;
+  }
+}
+
+function showRegisterForm(user) {
+  document.getElementById('headerSubtitle').textContent = 'Зарегистрируйтесь для участия';
+  document.getElementById('registerForm').classList.remove('hidden');
+  document.getElementById('profileStats').classList.add('hidden');
+
+  if (user.photo_url) {
+    document.getElementById('regAvatar').src = user.photo_url;
+    document.getElementById('regAvatar').classList.remove('hidden');
+  }
+  document.getElementById('regUsername').value = user.username ? '@' + user.username : '—';
+  document.getElementById('regName').value = user.name || 'Игрок';
+}
+
+function showProfile(user) {
+  document.getElementById('headerSubtitle').textContent = 'Ваш профиль';
+  document.getElementById('registerForm').classList.add('hidden');
+  document.getElementById('profileStats').classList.remove('hidden');
+
+  document.getElementById('profileAvatar').src = user.photo_url || 'https://via.placeholder.com/80?text=⚽';
+  document.getElementById('profileName').textContent = user.name || 'Игрок';
+  document.getElementById('profileUsername').textContent = user.username ? '@' + user.username : '';
+  document.getElementById('statSkill').textContent = user.skill_level.toFixed(1) + '%';
+  document.getElementById('statMatches').textContent = user.matches_played;
+  document.getElementById('statGoals').textContent = user.goals;
+  document.getElementById('skillBarValue').textContent = user.skill_level.toFixed(1) + '%';
+  document.getElementById('skillBar').style.width = user.skill_level + '%';
+}
+
+async function registerUser() {
+  const skill = parseFloat(document.getElementById('skillSlider').value);
+  try {
+    tg?.HapticFeedback?.impactOccurred('medium');
+    const data = await apiCall('/register', 'POST', { skill_level: skill });
+    currentUser = data.user;
+    showProfile(data.user);
+    tg?.showPopup?.({ title: '✅', message: 'Профиль сохранен!' });
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+// Slider live update
+document.getElementById('skillSlider').addEventListener('input', (e) => {
+  document.getElementById('skillValue').textContent = e.target.value + '%';
+});
+
+// ============================================================
+// Match creation
+// ============================================================
+async function loadUsers() {
+  try {
+    const data = await apiCall('/users');
+    allUsers = data.users;
+    renderPlayerList();
+  } catch (e) {
+    document.getElementById('playerList').innerHTML = '<p class="text-red-400 text-sm">Ошибка загрузки: ' + e.message + '</p>';
+  }
+}
+
+function renderPlayerList() {
+  const container = document.getElementById('playerList');
+  if (allUsers.length === 0) {
+    container.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Нет зарегистрированных игроков</p>';
+    return;
+  }
+  container.innerHTML = allUsers.map(u => {
+    const checked = selectedPlayers.has(u.id) ? 'checked' : '';
+    const bg = selectedPlayers.has(u.id) ? 'bg-green-900/30 border-green-600' : 'bg-slate-800/40 border-slate-700';
+    return `
+      <label class="flex items-center gap-3 p-3 rounded-xl border ${bg} cursor-pointer transition" onclick="togglePlayer(${u.id})">
+        <img src="${u.photo_url || 'https://via.placeholder.com/40?text=⚽'}" class="w-10 h-10 rounded-full object-cover" />
+        <div class="flex-1">
+          <div class="font-semibold text-white text-sm">${u.name || 'Игрок'}</div>
+          <div class="text-xs text-slate-400">${u.username ? '@' + u.username : ''} · ${u.skill_level.toFixed(1)}%</div>
+        </div>
+        <input type="checkbox" ${checked} class="w-5 h-5 accent-green-500 pointer-events-none" />
+      </label>
+    `;
+  }).join('');
+}
+
+function togglePlayer(id) {
+  if (selectedPlayers.has(id)) {
+    selectedPlayers.delete(id);
+  } else {
+    selectedPlayers.add(id);
+  }
+  renderPlayerList();
+}
+
+function selectAll() {
+  allUsers.forEach(u => selectedPlayers.add(u.id));
+  renderPlayerList();
+}
+
+function deselectAll() {
+  selectedPlayers.clear();
+  renderPlayerList();
+}
+
+async function createMatch() {
+  const ids = Array.from(selectedPlayers);
+  if (ids.length < 2) {
+    alert('Выберите минимум 2 игрока');
+    return;
+  }
+  try {
+    tg?.HapticFeedback?.impactOccurred('medium');
+    await apiCall('/match/create', 'POST', { player_ids: ids });
+    tg?.showPopup?.({ title: '⚽', message: 'Команды сформированы!' });
+    switchTab('active');
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+// ============================================================
+// Active match
+// ============================================================
+async function loadActiveMatch() {
+  try {
+    const data = await apiCall('/match/active');
+    if (!data.match) {
+      document.getElementById('activeMatchContainer').innerHTML = `
+        <div class="card rounded-2xl p-8 text-center">
+          <div class="text-5xl mb-3">⚽</div>
+          <p class="text-slate-400">Нет активного матча</p>
+          <p class="text-slate-500 text-sm mt-1">Создайте матч на вкладке "Матч"</p>
+        </div>
+      `;
+      activeMatch = null;
+      return;
+    }
+    activeMatch = data.match;
+    goalsInput = {};
+    renderActiveMatch();
+  } catch (e) {
+    document.getElementById('activeMatchContainer').innerHTML = '<p class="text-red-400 text-sm">Ошибка: ' + e.message + '</p>';
+  }
+}
+
+async function renderActiveMatch() {
+  if (!activeMatch) return;
+
+  const teamA = typeof activeMatch.team_a === 'string' ? JSON.parse(activeMatch.team_a) : activeMatch.team_a;
+  const teamB = typeof activeMatch.team_b === 'string' ? JSON.parse(activeMatch.team_b) : activeMatch.team_b;
+  const usersMap = {};
+  allUsers.forEach(u => { usersMap[u.id] = u; });
+
+  // If allUsers empty, load
+  if (allUsers.length === 0) {
+    await loadUsers();
+    allUsers.forEach(u => { usersMap[u.id] = u; });
+  }
+
+  const renderTeam = (ids, team) => {
+    return ids.map(pid => {
+      const u = usersMap[pid] || { name: 'Игрок ' + pid, photo_url: '' };
+      const g = goalsInput[pid] || 0;
+      return `
+        <div class="flex items-center gap-2 p-2 bg-slate-800/40 rounded-lg">
+          <img src="${u.photo_url || 'https://via.placeholder.com/32?text=⚽'}" class="w-8 h-8 rounded-full object-cover" />
+          <div class="flex-1 text-sm text-white truncate">${u.name || 'Игрок'}</div>
+          <div class="flex items-center gap-2">
+            <button onclick="changeGoal('${pid}', ${team}, -1)" class="w-7 h-7 rounded-full bg-red-500/80 text-white font-bold flex items-center justify-center">−</button>
+            <span class="w-6 text-center font-bold text-orange-400">${g}</span>
+            <button onclick="changeGoal('${pid}', ${team}, 1)" class="w-7 h-7 rounded-full bg-green-500/80 text-white font-bold flex items-center justify-center">+</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  document.getElementById('activeMatchContainer').innerHTML = `
+    <!-- Score board -->
+    <div class="card rounded-2xl p-5">
+      <div class="flex items-center justify-around">
+        <div class="text-center">
+          <div class="text-xs text-green-400 font-semibold mb-1">КОМАНДА A</div>
+          <div class="text-5xl font-black text-white">${activeMatch.score_a}</div>
+        </div>
+        <div class="text-slate-500 text-2xl">:</div>
+        <div class="text-center">
+          <div class="text-xs text-blue-400 font-semibold mb-1">КОМАНДА B</div>
+          <div class="text-5xl font-black text-white">${activeMatch.score_b}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Team A -->
+    <div class="card rounded-2xl p-4">
+      <h3 class="text-sm font-bold text-green-400 mb-2">🟢 Команда A</h3>
+      <div class="space-y-2">${renderTeam(teamA, 'a')}</div>
+    </div>
+
+    <!-- Team B -->
+    <div class="card rounded-2xl p-4">
+      <h3 class="text-sm font-bold text-blue-400 mb-2">🔵 Команда B</h3>
+      <div class="space-y-2">${renderTeam(teamB, 'b')}</div>
+    </div>
+
+    <!-- Finish button -->
+    <button onclick="finishMatch()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition">
+      🏁 Завершить матч
+    </button>
+  `;
+}
+
+async function changeGoal(pid, team, delta) {
+  if (!activeMatch) return;
+  pid = String(pid);
+  const current = goalsInput[pid] || 0;
+  const newVal = Math.max(0, current + delta);
+  goalsInput[pid] = newVal;
+
+  // Update team score
+  if (team === 'a') {
+    const teamA = JSON.parse(activeMatch.team_a);
+    const teamGoals = teamA.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
+    activeMatch.score_a = teamGoals;
+  } else {
+    const teamB = JSON.parse(activeMatch.team_b);
+    const teamGoals = teamB.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
+    activeMatch.score_b = teamGoals;
+  }
+
+  tg?.HapticFeedback?.selectionChanged?.();
+  renderActiveMatch();
+}
+
+async function finishMatch() {
+  if (!activeMatch) return;
+  const teamA = JSON.parse(activeMatch.team_a);
+  const teamB = JSON.parse(activeMatch.team_b);
+  const totalA = teamA.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
+  const totalB = teamB.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
+
+  const confirmed = confirm(`Завершить матч?\n\nСчет: ${totalA} : ${totalB}`);
+  if (!confirmed) return;
+
+  try {
+    tg?.HapticFeedback?.impactOccurred('heavy');
+    await apiCall('/match/finish', 'POST', {
+      match_id: activeMatch.id,
+      score_a: totalA,
+      score_b: totalB,
+      goals: goalsInput,
+    });
+    activeMatch = null;
+    goalsInput = {};
+    tg?.showPopup?.({ title: '🏁', message: 'Матч завершен! Статистика обновлена.' });
+    await loadMe();
+    switchTab('profile');
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+// ============================================================
+// Init
+// ============================================================
+initData = getInitData();
+if (!initData) {
+  document.getElementById('headerSubtitle').textContent = '⚠️ Откройте через Telegram';
+} else {
+  loadMe();
+}
+</script>
+</body>
+</html>
