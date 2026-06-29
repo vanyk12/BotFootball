@@ -56,6 +56,7 @@ async def get_pool() -> asyncpg.Pool:
             dsn=DATABASE_URL,
             min_size=2,
             max_size=10,
+            statement_cache_size=0,  # Отключаем кэш для совместимости с PgBouncer
         )
     return _pool
 
