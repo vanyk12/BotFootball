@@ -15,6 +15,10 @@
   input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #22c55e; cursor: pointer; }
   .card { background: rgba(30,41,59,0.8); border: 1px solid rgba(71,85,105,0.5); }
   ::-webkit-scrollbar { width: 0; }
+  .player-row { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+  .player-row:active { opacity: 0.7; }
+  .goal-btn { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+  .goal-btn:active { transform: scale(0.92); }
 </style>
 </head>
 <body class="min-h-screen pb-24">
@@ -149,8 +153,13 @@ let initData = '';
 let currentUser = null;
 let allUsers = [];
 let activeMatch = null;
-let selectedPlayers = new Set();
-let goalsInput = {}; // {userId: goals}
+let selectedPlayers = new Set();   // ВСЕГДА храним ID как String
+let goalsInput = {};                 // ключи — ВСЕГДА String
+
+// Утилита: привести любой ID к строке (критично для BIGINT из Telegram)
+function sid(id) {
+  return String(id);
+}
 
 function getInitData() {
   if (tg && tg.initData && tg.initData.length > 0) {
@@ -262,8 +271,13 @@ document.getElementById('skillSlider').addEventListener('input', (e) => {
 });
 
 // ============================================================
-// Match creation
+// Match creation — ИСПРАВЛЕННЫЕ чекбоксы (Баг 1)
 // ============================================================
+// Решение: убран <label> и <input checkbox> полностью.
+// Каждая строка — <div> с data-атрибутом и addEventListener('click').
+// Никакого двойного срабатывания, никакой блокировки pointer-events.
+// ============================================================
+
 async function loadUsers() {
   try {
     const data = await apiCall('/users');
@@ -276,37 +290,87 @@ async function loadUsers() {
 
 function renderPlayerList() {
   const container = document.getElementById('playerList');
-  if (allUsers.length === 0) {
+  if (!allUsers || allUsers.length === 0) {
     container.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Нет зарегистрированных игроков</p>';
     return;
   }
+
+  // Полностью пересоздаём список
   container.innerHTML = allUsers.map(u => {
-    const checked = selectedPlayers.has(u.id) ? 'checked' : '';
-    const bg = selectedPlayers.has(u.id) ? 'bg-green-900/30 border-green-600' : 'bg-slate-800/40 border-slate-700';
+    const idStr = sid(u.id);
+    const isSelected = selectedPlayers.has(idStr);
+    const bgClass = isSelected
+      ? 'bg-green-900/30 border-green-600'
+      : 'bg-slate-800/40 border-slate-700';
+    const checkIcon = isSelected
+      ? '<div class="check-box w-5 h-5 rounded-md bg-green-500 flex items-center justify-center flex-shrink-0"><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>'
+      : '<div class="check-box w-5 h-5 rounded-md border-2 border-slate-600 flex-shrink-0"></div>';
+
     return `
-      <label class="flex items-center gap-3 p-3 rounded-xl border ${bg} cursor-pointer transition" onclick="togglePlayer(${u.id})">
+      <div class="player-row flex items-center gap-3 p-3 rounded-xl border ${bgClass} transition-all"
+           data-player-id="${idStr}">
         <img src="${u.photo_url || 'https://via.placeholder.com/40?text=⚽'}" class="w-10 h-10 rounded-full object-cover" />
-        <div class="flex-1">
-          <div class="font-semibold text-white text-sm">${u.name || 'Игрок'}</div>
-          <div class="text-xs text-slate-400">${u.username ? '@' + u.username : ''} · ${u.skill_level.toFixed(1)}%</div>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-white text-sm truncate">${u.name || 'Игрок'}</div>
+          <div class="text-xs text-slate-400 truncate">${u.username ? '@' + u.username : ''} · ${u.skill_level.toFixed(1)}%</div>
         </div>
-        <input type="checkbox" ${checked} class="w-5 h-5 accent-green-500 pointer-events-none" />
-      </label>
+        ${checkIcon}
+      </div>
     `;
   }).join('');
+
+  // Навешиваем слушатели на каждую строку через addEventListener
+  container.querySelectorAll('.player-row').forEach(row => {
+    row.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = this.getAttribute('data-player-id');
+      togglePlayer(id);
+    });
+  });
 }
 
 function togglePlayer(id) {
-  if (selectedPlayers.has(id)) {
-    selectedPlayers.delete(id);
+  const idStr = sid(id);
+  if (selectedPlayers.has(idStr)) {
+    selectedPlayers.delete(idStr);
   } else {
-    selectedPlayers.add(id);
+    selectedPlayers.add(idStr);
   }
-  renderPlayerList();
+  // Обновляем только визуал нужной строки — без полного перерендера
+  updatePlayerRowVisual(idStr);
+}
+
+function updatePlayerRowVisual(idStr) {
+  const row = document.querySelector('.player-row[data-player-id="' + idStr + '"]');
+  if (!row) return;
+
+  const isSelected = selectedPlayers.has(idStr);
+
+  // Обновляем фон и бордер
+  if (isSelected) {
+    row.classList.remove('bg-slate-800/40', 'border-slate-700');
+    row.classList.add('bg-green-900/30', 'border-green-600');
+  } else {
+    row.classList.remove('bg-green-900/30', 'border-green-600');
+    row.classList.add('bg-slate-800/40', 'border-slate-700');
+  }
+
+  // Обновляем чекбокс-иконку
+  const checkContainer = row.querySelector('.check-box');
+  if (checkContainer) {
+    if (isSelected) {
+      checkContainer.className = 'check-box w-5 h-5 rounded-md bg-green-500 flex items-center justify-center flex-shrink-0';
+      checkContainer.innerHTML = '<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+    } else {
+      checkContainer.className = 'check-box w-5 h-5 rounded-md border-2 border-slate-600 flex-shrink-0';
+      checkContainer.innerHTML = '';
+    }
+  }
 }
 
 function selectAll() {
-  allUsers.forEach(u => selectedPlayers.add(u.id));
+  allUsers.forEach(u => selectedPlayers.add(sid(u.id)));
   renderPlayerList();
 }
 
@@ -316,7 +380,8 @@ function deselectAll() {
 }
 
 async function createMatch() {
-  const ids = Array.from(selectedPlayers);
+  // На бэкенд отправляем числа (Number) — бэкенд ожидает int
+  const ids = Array.from(selectedPlayers).map(s => parseInt(s, 10));
   if (ids.length < 2) {
     alert('Выберите минимум 2 игрока');
     return;
@@ -332,8 +397,32 @@ async function createMatch() {
 }
 
 // ============================================================
-// Active match
+// Active match — ИСПРАВЛЕННЫЕ кнопки голов (Баг 2)
 // ============================================================
+// Решение: все ID игроков приводятся к String через sid().
+// team_a / team_b парсятся через parseTeamIds() с приведением к String.
+// goalsInput использует строковые ключи.
+// Кнопки +/- навешаны через addEventListener с data-pid.
+// ============================================================
+
+function parseTeamIds(raw) {
+  let arr;
+  if (typeof raw === 'string') {
+    try {
+      arr = JSON.parse(raw);
+    } catch (e) {
+      console.error('Failed to parse team:', raw, e);
+      return [];
+    }
+  } else if (Array.isArray(raw)) {
+    arr = raw;
+  } else {
+    return [];
+  }
+  // КЛЮЧЕВОЕ: все ID приводим к String
+  return arr.map(function(id) { return sid(id); });
+}
+
 async function loadActiveMatch() {
   try {
     const data = await apiCall('/match/active');
@@ -349,114 +438,151 @@ async function loadActiveMatch() {
       return;
     }
     activeMatch = data.match;
+
+    // НОРМАЛИЗУЕМ: парсим team_a/team_b и приводим все ID к String
+    activeMatch.team_a_ids = parseTeamIds(activeMatch.team_a);
+    activeMatch.team_b_ids = parseTeamIds(activeMatch.team_b);
+
+    // Сбрасываем ввод голов
     goalsInput = {};
+
+    // Загружаем пользователей если ещё не загружены
+    if (allUsers.length === 0) {
+      await loadUsers();
+    }
+
     renderActiveMatch();
   } catch (e) {
     document.getElementById('activeMatchContainer').innerHTML = '<p class="text-red-400 text-sm">Ошибка: ' + e.message + '</p>';
   }
 }
 
-async function renderActiveMatch() {
+function renderActiveMatch() {
   if (!activeMatch) return;
 
-  const teamA = typeof activeMatch.team_a === 'string' ? JSON.parse(activeMatch.team_a) : activeMatch.team_a;
-  const teamB = typeof activeMatch.team_b === 'string' ? JSON.parse(activeMatch.team_b) : activeMatch.team_b;
-  const usersMap = {};
-  allUsers.forEach(u => { usersMap[u.id] = u; });
+  var teamA = activeMatch.team_a_ids || [];
+  var teamB = activeMatch.team_b_ids || [];
 
-  // If allUsers empty, load
-  if (allUsers.length === 0) {
-    await loadUsers();
-    allUsers.forEach(u => { usersMap[u.id] = u; });
+  // Строим map пользователей со строковыми ключами
+  var usersMap = {};
+  if (allUsers && allUsers.length > 0) {
+    allUsers.forEach(function(u) { usersMap[sid(u.id)] = u; });
   }
 
-  const renderTeam = (ids, team) => {
-    return ids.map(pid => {
-      const u = usersMap[pid] || { name: 'Игрок ' + pid, photo_url: '' };
-      const g = goalsInput[pid] || 0;
-      return `
-        <div class="flex items-center gap-2 p-2 bg-slate-800/40 rounded-lg">
-          <img src="${u.photo_url || 'https://via.placeholder.com/32?text=⚽'}" class="w-8 h-8 rounded-full object-cover" />
-          <div class="flex-1 text-sm text-white truncate">${u.name || 'Игрок'}</div>
-          <div class="flex items-center gap-2">
-            <button onclick="changeGoal('${pid}', ${team}, -1)" class="w-7 h-7 rounded-full bg-red-500/80 text-white font-bold flex items-center justify-center">−</button>
-            <span class="w-6 text-center font-bold text-orange-400">${g}</span>
-            <button onclick="changeGoal('${pid}', ${team}, 1)" class="w-7 h-7 rounded-full bg-green-500/80 text-white font-bold flex items-center justify-center">+</button>
-          </div>
-        </div>
-      `;
+  function renderTeam(ids, teamLabel) {
+    if (!ids || ids.length === 0) {
+      return '<p class="text-slate-500 text-xs text-center py-2">Нет игроков</p>';
+    }
+    return ids.map(function(pidStr) {
+      var u = usersMap[pidStr] || { name: 'Игрок ' + pidStr, photo_url: '', username: '' };
+      var g = goalsInput[pidStr] || 0;
+      return '' +
+        '<div class="player-goal-row flex items-center gap-2 p-2 bg-slate-800/40 rounded-lg" data-pid="' + pidStr + '">' +
+          '<img src="' + (u.photo_url || 'https://via.placeholder.com/32?text=⚽') + '" class="w-8 h-8 rounded-full object-cover" />' +
+          '<div class="flex-1 text-sm text-white truncate">' + (u.name || 'Игрок') + '</div>' +
+          '<div class="flex items-center gap-2">' +
+            '<div class="goal-btn w-8 h-8 rounded-full bg-red-500/80 text-white font-bold flex items-center justify-center text-lg" data-action="dec" data-pid="' + pidStr + '">−</div>' +
+            '<span class="goal-count w-6 text-center font-bold text-orange-400">' + g + '</span>' +
+            '<div class="goal-btn w-8 h-8 rounded-full bg-green-500/80 text-white font-bold flex items-center justify-center text-lg" data-action="inc" data-pid="' + pidStr + '">+</div>' +
+          '</div>' +
+        '</div>';
     }).join('');
-  };
+  }
 
-  document.getElementById('activeMatchContainer').innerHTML = `
-    <!-- Score board -->
-    <div class="card rounded-2xl p-5">
-      <div class="flex items-center justify-around">
-        <div class="text-center">
-          <div class="text-xs text-green-400 font-semibold mb-1">КОМАНДА A</div>
-          <div class="text-5xl font-black text-white">${activeMatch.score_a}</div>
-        </div>
-        <div class="text-slate-500 text-2xl">:</div>
-        <div class="text-center">
-          <div class="text-xs text-blue-400 font-semibold mb-1">КОМАНДА B</div>
-          <div class="text-5xl font-black text-white">${activeMatch.score_b}</div>
-        </div>
-      </div>
-    </div>
+  document.getElementById('activeMatchContainer').innerHTML = '' +
+    '<div class="card rounded-2xl p-5">' +
+      '<div class="flex items-center justify-around">' +
+        '<div class="text-center">' +
+          '<div class="text-xs text-green-400 font-semibold mb-1">КОМАНДА A</div>' +
+          '<div id="scoreA" class="text-5xl font-black text-white">' + activeMatch.score_a + '</div>' +
+        '</div>' +
+        '<div class="text-slate-500 text-2xl">:</div>' +
+        '<div class="text-center">' +
+          '<div class="text-xs text-blue-400 font-semibold mb-1">КОМАНДА B</div>' +
+          '<div id="scoreB" class="text-5xl font-black text-white">' + activeMatch.score_b + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card rounded-2xl p-4">' +
+      '<h3 class="text-sm font-bold text-green-400 mb-2">🟢 Команда A</h3>' +
+      '<div class="space-y-2" id="teamAContainer">' + renderTeam(teamA, 'a') + '</div>' +
+    '</div>' +
+    '<div class="card rounded-2xl p-4">' +
+      '<h3 class="text-sm font-bold text-blue-400 mb-2">🔵 Команда B</h3>' +
+      '<div class="space-y-2" id="teamBContainer">' + renderTeam(teamB, 'b') + '</div>' +
+    '</div>' +
+    '<button onclick="finishMatch()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition">🏁 Завершить матч</button>';
 
-    <!-- Team A -->
-    <div class="card rounded-2xl p-4">
-      <h3 class="text-sm font-bold text-green-400 mb-2">🟢 Команда A</h3>
-      <div class="space-y-2">${renderTeam(teamA, 'a')}</div>
-    </div>
-
-    <!-- Team B -->
-    <div class="card rounded-2xl p-4">
-      <h3 class="text-sm font-bold text-blue-400 mb-2">🔵 Команда B</h3>
-      <div class="space-y-2">${renderTeam(teamB, 'b')}</div>
-    </div>
-
-    <!-- Finish button -->
-    <button onclick="finishMatch()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition">
-      🏁 Завершить матч
-    </button>
-  `;
+  // Навешиваем слушатели на кнопки голов через addEventListener
+  document.querySelectorAll('.goal-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var pid = this.getAttribute('data-pid');   // уже String
+      var action = this.getAttribute('data-action');
+      var delta = action === 'inc' ? 1 : -1;
+      changeGoal(pid, delta);
+    });
+  });
 }
 
-async function changeGoal(pid, team, delta) {
+function changeGoal(pid, delta) {
   if (!activeMatch) return;
-  pid = String(pid);
-  const current = goalsInput[pid] || 0;
-  const newVal = Math.max(0, current + delta);
+
+  // Гарантируем, что pid — это String
+  pid = sid(pid);
+
+  var current = goalsInput[pid] || 0;
+  var newVal = Math.max(0, current + delta);
   goalsInput[pid] = newVal;
 
-  // Update team score
-  if (team === 'a') {
-    const teamA = JSON.parse(activeMatch.team_a);
-    const teamGoals = teamA.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
-    activeMatch.score_a = teamGoals;
-  } else {
-    const teamB = JSON.parse(activeMatch.team_b);
-    const teamGoals = teamB.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
-    activeMatch.score_b = teamGoals;
-  }
+  // Пересчитываем счёт команд из goalsInput
+  var teamA = activeMatch.team_a_ids || [];
+  var teamB = activeMatch.team_b_ids || [];
 
+  activeMatch.score_a = teamA.reduce(function(sum, idStr) { return sum + (goalsInput[idStr] || 0); }, 0);
+  activeMatch.score_b = teamB.reduce(function(sum, idStr) { return sum + (goalsInput[idStr] || 0); }, 0);
+
+  // Тактильный отклик
   tg?.HapticFeedback?.selectionChanged?.();
-  renderActiveMatch();
+
+  // Точечно обновляем только изменённую строку и табло счёта
+  updateGoalDisplay(pid, newVal);
+  updateScoreDisplay();
+}
+
+function updateGoalDisplay(pidStr, goalCount) {
+  // Находим строку игрока и обновляем число голов
+  var row = document.querySelector('.player-goal-row[data-pid="' + pidStr + '"]');
+  if (!row) return;
+  var span = row.querySelector('.goal-count');
+  if (span) {
+    span.textContent = goalCount;
+  }
+}
+
+function updateScoreDisplay() {
+  var scoreA = document.getElementById('scoreA');
+  var scoreB = document.getElementById('scoreB');
+  if (scoreA) scoreA.textContent = activeMatch.score_a;
+  if (scoreB) scoreB.textContent = activeMatch.score_b;
 }
 
 async function finishMatch() {
   if (!activeMatch) return;
-  const teamA = JSON.parse(activeMatch.team_a);
-  const teamB = JSON.parse(activeMatch.team_b);
-  const totalA = teamA.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
-  const totalB = teamB.reduce((s, id) => s + (goalsInput[String(id)] || 0), 0);
 
-  const confirmed = confirm(`Завершить матч?\n\nСчет: ${totalA} : ${totalB}`);
+  var teamA = activeMatch.team_a_ids || [];
+  var teamB = activeMatch.team_b_ids || [];
+  var totalA = teamA.reduce(function(s, idStr) { return s + (goalsInput[idStr] || 0); }, 0);
+  var totalB = teamB.reduce(function(s, idStr) { return s + (goalsInput[idStr] || 0); }, 0);
+
+  var confirmed = confirm('Завершить матч?\n\nСчет: ' + totalA + ' : ' + totalB);
   if (!confirmed) return;
 
   try {
     tg?.HapticFeedback?.impactOccurred('heavy');
+
+    // goalsInput имеет строковые ключи — бэкенд парсит через str(pid)
     await apiCall('/match/finish', 'POST', {
       match_id: activeMatch.id,
       score_a: totalA,
